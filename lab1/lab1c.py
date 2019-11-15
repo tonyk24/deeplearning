@@ -20,6 +20,13 @@ def plot_image2(x):
 	plt.grid(False)
 	plt.show()
 
+def plot_image3(x):
+	plt.figure()
+	plt.imshow(x)
+	plt.colorbar()
+	plt.grid(False)
+	plt.show()
+
 # Plot 25 first images
 def plot_first_25_images_with_class(class_names_clothing,
 									train_images, train_labels):
@@ -33,35 +40,15 @@ def plot_first_25_images_with_class(class_names_clothing,
 		plt.xlabel(class_names_clothing[train_labels[i]])
 	plt.show()
 
-# Function that augements the image set by 3 times
-# References:
-# (1) https://keras.io/preprocessing/image/
-def augument_images(train_images, train_labels):
-	x_ret = train_images
-	y_ret = train_labels
-	
-	# Settings to variate the images, reference (1)
-	datagen = ImageDataGenerator(
-			rotation_range=40,
-			width_shift_range=0.2,
-			height_shift_range=0.2,
-			rescale=1.,
-			shear_range=0.2,
-			zoom_range=0.2,
-			horizontal_flip=True,
-			fill_mode='nearest')
-	
-	# Create 3 batches of 60000 images
-	it = datagen.flow(x=train_images, y=train_labels, batch_size=train_images.shape[0], shuffle=False)
-	i = 0
-	for x,y in it:
-		x_ret = np.vstack((x_ret,x))
-		y_ret = np.concatenate((y_ret, y))
-			
-		i = i + 1
-		if i == 3:
-			break
-	return (x_ret, y_ret)
+def plot_first_32_images(model_layers_predictions):
+	plt.figure(figsize=(10,10))
+	for i in range(32):
+		plt.subplot(4,8, i+1)
+		plt.xticks([])
+		plt.yticks([])
+		plt.grid(False)
+		plt.imshow(model_layers_predictions[0, :, :, i], cmap=plt.cm.binary)
+	plt.show()
 
 # A fully connected neural network
 def nn_fully_connected(train_images, train_labels, test_images, test_labels):
@@ -102,7 +89,7 @@ def nn_fully_connected(train_images, train_labels, test_images, test_labels):
 # regularization was added.
 #
 #
-def nn_convnet(train_images, train_labels, test_images, test_labels, l2_reg=False):
+def nn_convnet(train_images, train_labels, test_images, test_labels, epochs_in=1):
 	# Reshape to insert depth of 1
 	train_images = train_images.reshape(train_images.shape[0], 28, 28, 1)
 	test_images = test_images.reshape(test_images.shape[0], 28, 28,1)
@@ -142,12 +129,9 @@ def nn_convnet(train_images, train_labels, test_images, test_labels, l2_reg=Fals
 	# Flatten layer output and run it through a fully connected network
 	model.add(keras.layers.Flatten())
 	# Use L2-reularization
-	if l2_reg == True:
-		model.add(keras.layers.Dense(128, kernel_regularizer=keras.regularizers.l2(0.001), activation='relu'))
-		model.add(keras.layers.Dense(128, kernel_regularizer=keras.regularizers.l2(0.001), activation='relu'))
-	else:
-		model.add(keras.layers.Dense(128, activation='relu'))
-		model.add(keras.layers.Dense(128, activation='relu'))
+
+	model.add(keras.layers.Dense(128, activation='relu'))
+	model.add(keras.layers.Dense(128, activation='relu'))
 	model.add(keras.layers.Dropout(0.5))
 	
 	# According to (1) p114 softmax and categorial_crossentropy should be
@@ -165,13 +149,13 @@ def nn_convnet(train_images, train_labels, test_images, test_labels, l2_reg=Fals
 				metrics=['accuracy'])
 
 	# Epoch 5 was used because overfitting was noticed after 5 epochs
-	model.fit(train_images, train_labels, epochs=10)
+	model.fit(train_images, train_labels, epochs=epochs_in)
 	
 	# Evaluate model using test data
 	test_loss, test_acc = model.evaluate(test_images, test_labels, verbose=2)
 
 	print('\nTest accuracy:', test_acc)
-	return test_acc
+	return (test_acc, model)
 	
 
 clothing_mnist = fashion_mnist
@@ -183,44 +167,36 @@ clothing_mnist = fashion_mnist
 class_names_clothing = ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
 						'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot']
 
-print(train_images.shape)
-print(len(train_labels))
 
 # Normalize image data between 0.0 and 1.0
 train_images = train_images / 255.0
 test_images = test_images / 255.0
 
-# Add a new channel
-train_images_re = train_images.reshape(train_images.shape[0], 28, 28, 1)
+(acc, model) = nn_convnet(train_images, train_labels, test_images, test_labels)
 
-# Augument the image set
-(train_images_aug,train_labels_aug) = augument_images(train_images_re, train_labels)
-# Remove the last channel
-train_images_aug_corr = train_images_aug[:,:,:,0]
-#plot_first_image()
+print(acc)
 
-#plot_first_25_images_with_class(class_names_clothing, train_images, train_labels)
+# Extract the output layers from the model
+model_layer_outputs = [layer.output for layer in model.layers]          # all layer outputs
+act_model = keras.models.Model(inputs=model.input, outputs=model_layer_outputs)
 
+# Output for first image in test set
+img_input = test_images[0]
+# Reshape to expected dimensions (number_of_images, 28, 28, 1)
+img_input = img_input.reshape(1, 28, 28, 1)
+model_layers_prediction = act_model.predict(img_input)
 
-test_acc_dict = {}
-test_acc_dict["Fully connected, img aug"] = nn_fully_connected(train_images_aug_corr, train_labels_aug, test_images, test_labels)
-test_acc_dict["Fully connected"] = nn_fully_connected(train_images, train_labels, test_images, test_labels)
+# Print the number of layers with predictions
+print(len(model_layers_prediction))
 
-test_acc_dict["Padding, small window, small strides, droput"] =   nn_convnet(train_images, train_labels, 
-															test_images, test_labels, False)
-test_acc_dict["Padding, small window, small strides, droput, img aug"] =   nn_convnet(train_images_aug_corr, train_labels_aug, 
-															test_images, test_labels, False)
-test_acc_dict["Padding, small window, small strides, dropout, l2 regularizer, img_aug"] =   nn_convnet(train_images_aug_corr, train_labels_aug, 
-															test_images, test_labels, True)
+#print(model_layers_prediction)
 
-print(test_acc_dict)
-#predictions = model.predict(test_images)
+# Specify index to plot images for (0-7)
+layer_act = model_layers_prediction[7]
+print(layer_act.shape)
 
-#print(class_names_clothing[np.argmax(predictions[0])])
-#plot_image(test_images, 0)
-
-
-
+plot_first_32_images(layer_act)
+#plot_image3(first_layer_act[0, :, :, 3])
 
 
 

@@ -24,6 +24,7 @@ def plot_first_25_images_with_class(class_names_clothing,
 		plt.xlabel(class_names_clothing[train_labels[i]])
 	plt.show()
 
+# A fully connected neural network
 def nn_fully_connected(train_images, train_labels, test_images, test_labels):
 	model = keras.Sequential([
 		keras.layers.Flatten(input_shape=(28,28)),
@@ -142,6 +143,7 @@ class_names_clothing = ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
 print(train_images.shape)
 print(len(train_labels))
 
+# Normalize image data between 0.0 and 1.0
 train_images = train_images / 255.0
 test_images = test_images / 255.0
 
