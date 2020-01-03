@@ -2,6 +2,7 @@ import csv
 import datetime
 import numpy as np
 import math
+import time
 
 from keras.models import Sequential
 from keras import layers
@@ -38,56 +39,49 @@ labels = [None] * 24
 days_back = 5
 n = 0
 # Number of hours minus days_back days
-m = (len(dpList)-(days_back*24))
+m = (len(dpList)-(days_back*24))-24
 while n < 24:
-	# (number of 24 hour periods, number of hours the last five days, 2)
-	data[n] = np.zeros((int(math.floor(m / 24.0)), (days_back*24), 2))
-	labels[n] = np.zeros((int(math.floor(m / 24.0)), 1))
+	# (number of hours, number of hours the last five days, 2)
+	data[n] = np.zeros((m, (days_back*24), 2))
+	labels[n] = np.zeros((m, 1))
 	n = n + 1
 
 # Take data from five days back
 i = days_back*24
 
-while i < int(math.floor(m / 24.0))*24+days_back*24:
+while i < len(dpList)-24:
 	#print(str(dpList[i].timestamp))
 	
-	
-	
-	prediction_value_temp = dpList[i].temperatureValue
-	prediction_value_hum = dpList[i].humidityValue
-	
-	j = i-days_back*24
-	k = 0
-	listTemp = []
-	listHum = []
-	while j < i:
-		# Data for the nth hour, since we will have one model for each hour of the day
-		n = (j) % 24
-		# Index for the current hour to insert data for
-		a = int(math.floor((i-days_back*24) / 24.0))
-		# Index for the current hour in last five days
-		# First: 
-		b = k
-		#print('[n= ' + str(n) + ', a=' + str(a) + ', b=' + str(b))
-		#print('i= ' + str(i) + ', j=' + str(j))
-		data[n][a, b, 0] = dpList[j].temperatureValue
-		data[n][a, b, 0] -= data_mean[0]
-		data[n][a, b, 0] /= data_std[0]
+	for j in range(24):
 		
-		data[n][a, b, 1] = dpList[j].humidityValue
-		data[n][a, b, 1] -= data_mean[1]
-		data[n][a, b, 1] /= data_std[1]
-		
-		labels[n][a, 0] = prediction_value_temp
-		
-		listTemp.append(dpList[j].temperatureValue)
-		listHum.append(dpList[j].humidityValue)
-		j = j + 1
-		k = k + 1
+		for k in range(days_back*24):
+			data[j][i-days_back*24, k, 0] = dpList[i-days_back*24+k].temperatureValue
+			data[j][i-days_back*24, k, 0] -= data_mean[0]
+			data[j][i-days_back*24, k, 0] /= data_std[0]
+			
+			data[j][i-days_back*24, k, 1] = dpList[i-days_back*24+k].humidityValue
+			data[j][i-days_back*24, k, 1] -= data_mean[1]
+			data[j][i-days_back*24, k, 1] /= data_std[1]
+		labels[j][i-days_back*24][0] = dpList[i+j].temperatureValue
+		labels[j][i-days_back*24][0] -= data_mean[0]
+		labels[j][i-days_back*24][0] /= data_std[0]
 	i = i + 1
-#print(labels[0])
-#print(data[0])
+	
 
+# Verify that data is correct
+for i in range(24):
+	#print('a=' + str(alldata[days_back*24 + i][0]) + ', b= ' + str((labels[i][0]-data_mean[0])/data_std[0]))
+	assert abs(alldata[days_back*24 + i][0] - labels[i][0]) < 0.01
+	assert abs(alldata[days_back*24 + i + 1][0] - labels[i][1]) < 0.01
+
+for i in range(days_back*24):
+	for j in range(24):
+		#print('[i=' + str(i) + ',j=' + str(j) + ']a=' + str(alldata[i][0]* data_std[0] + data_mean[0]) + ', b=' + str(data[j][0, i, 0] * data_std[0] + data_mean[0]))
+		assert abs(alldata[i][0] - data[j][0, i, 0]) < 0.01
+		assert abs(alldata[i+1][0] - data[j][1, i,0]) < 0.01
+		assert abs(alldata[i][1] - data[j][0, i, 1]) < 0.01
+		assert abs(alldata[i+1][1] - data[j][1, i,1]) < 0.01
+	
 def randomize(a, b):
     # Generate the permutation index array.
     permutation = np.random.permutation(a.shape[0])
@@ -117,6 +111,9 @@ for i in range(24):
 	
 print('test= ' + str(test_x[0].shape) + ', data= ' + str(data_x[0].shape))
 
+def Average(lst): 
+    return sum(lst) / len(lst) 
+
 def model_all_to_all(data, labels, test_data, test_labels):
 	result  = [None] * 24
 	history = [None] * 24
@@ -126,15 +123,63 @@ def model_all_to_all(data, labels, test_data, test_labels):
 		model[i] = Sequential()
 		model[i].add(layers.Flatten(input_shape=(data[i][-1].shape)))
 		model[i].add(layers.Dense(32, activation='relu'))
+		model[i].add(layers.Dense(32, activation='relu'))
+		model[i].add(layers.Dense(32, activation='relu'))
 		model[i].add(layers.Dense(1))
 		model[i].compile(optimizer=RMSprop(), loss='mae')
-		history[i] = model[i].fit(data[i], labels[i], epochs=30)
+		history[i] = model[i].fit(data[i], labels[i], epochs=10)
 		result[i] = model[i].evaluate(test_data[i], test_labels[i])
 		#test_loss[i] = tl
 		#test_acc[i] = ta
 	return history, result
 
-history, result = model_all_to_all(data_x, labels_y, test_x, test_y)
+def model_rnn_lstm(data, labels, test_data, test_labels):
+	result  = [None] * 24
+	history = [None] * 24
+
+	model = [None] * 24
+	for i in range(24):
+		model[i] = Sequential()
+		model[i].add(layers.LSTM(32, return_sequences=True,input_shape=(data[i][-1].shape)))
+		model[i].add(layers.LSTM(32, return_sequences=True, activation='relu'))
+		model[i].add(layers.LSTM(32, activation='relu'))
+		model[i].add(layers.Dense(1))
+		
+		model[i].compile(optimizer=RMSprop(), loss='mae')
+		history[i] = model[i].fit(data[i], labels[i], epochs=10)
+		result[i] = model[i].evaluate(test_data[i], test_labels[i])
+	return history, result
+
+def model_rnn_gru(data, labels, test_data, test_labels):
+	result  = [None] * 24
+	history = [None] * 24
+
+	model = [None] * 24
+	for i in range(24):
+		model[i] = Sequential()
+		model[i].add(layers.GRU(32, input_shape=(data[i][-1].shape)))
+		model[i].add(layers.GRU(32, activation='relu'))
+		model[i].add(layers.GRU(32, activation='relu'))
+		model[i].add(layers.Dense(1))
+		
+		model[i].compile(optimizer=RMSprop(), loss='mae')
+		history[i] = model[i].fit(data[i], labels[i], epochs=10)
+		result[i] = model[i].evaluate(test_data[i], test_labels[i])
+	return history, result
+	
+#history, result = model_all_to_all(data_x, labels_y, test_x, test_y)
+
+start_time = time.time()
+history_lstm, result_lstm = model_rnn_lstm(data_x, labels_y, test_x, test_y)
+elapsed_time = time.time() - start_time
+print('LSTM elapsed time: ' + str(elapsed_time))
+print(Average(result_lstm))
+
+#history_gru, result_gru = model_rnn_gru(data_x, labels_y, test_x, test_y)
+#print(Average(result))
+#print(Average(result_gru))
+	
+
 
 
 
