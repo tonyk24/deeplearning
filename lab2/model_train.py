@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from keras.models import Sequential
 from keras import layers
 from keras.optimizers import RMSprop
+from keras import callbacks
 
 class DataPoint:
 	def __init__(self, tempValue, humValue, ts):
@@ -92,10 +93,11 @@ def randomize(a, b):
     # Generate the permutation index array.
     permutation = np.random.permutation(a.shape[0])
     # Shuffle the arrays by giving the permutation in the square brackets.
+    print('permutation= ' + str(permutation))
     shuffled_a = a[permutation]
     shuffled_b = b[permutation]
-    print('rand1, orginal a=' + str(a[0]) + ', b= ' + str(b[0]))
-    print('rand1, random  a=' + str(a[permutation[0]]) + ', b=' + str(b[permutation[0]]))
+    #print('rand1, orginal a=' + str(a[0]) + ', b= ' + str(b[0]))
+    #print('rand1, random  a=' + str(a[permutation[0]]) + ', b=' + str(b[permutation[0]]))
     return shuffled_a, shuffled_b
 
 # Shuffle the data
@@ -104,7 +106,7 @@ labels_y = [None] * 24
 for i in range(24):
 	data_x[i], labels_y[i] = randomize(data[i], labels[i])
 
-sys.exit()
+
 # Split data with 20% test data
 test_x = [None] * 24
 test_y = [None] * 24
@@ -118,7 +120,7 @@ for i in range(24):
 	
 	test_y[i] = labels_y[i][0:split_percentage_int]
 	labels_y[i] = labels_y[i][split_percentage_int:]
-	
+
 print('test= ' + str(test_x[0].shape) + ', data= ' + str(data_x[0].shape))
 
 def Average(lst): 
@@ -158,7 +160,10 @@ def save_model_to_file(type, models):
 		# serialize weights to HDF5
 		models[i].save_weights('model_data\\' + type + '_model_' + str(i) + '.h5')
 
+
 def model_all_to_all(data, labels, test_data, test_labels):
+	logdir = "logs\\n-to-n\\scalars\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+	tensorboard_callback = callbacks.TensorBoard(log_dir=logdir)
 	result  = [None] * 24
 	history = [None] * 24
 
@@ -174,7 +179,7 @@ def model_all_to_all(data, labels, test_data, test_labels):
 		model[i].summary()
 		
 		model[i].compile(optimizer=RMSprop(), loss='mae')
-		history[i] = model[i].fit(data[i], labels[i], epochs=50, validation_split=0.2)
+		history[i] = model[i].fit(data[i], labels[i], epochs=10, validation_split=0.2, callbacks=[tensorboard_callback])
 		result[i] = model[i].evaluate(test_data[i], test_labels[i])
 	return model, history, result
 
